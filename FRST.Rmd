@@ -1,0 +1,99 @@
+getwd()
+setwd("C:/home/pranjali")
+getwd()
+
+library(datasets)
+
+wine <- read.csv("wine.csv")
+#Shuffle the data with set.seed
+set.seed(5)
+dt.Shuffled <- wine[sample(nrow(wine)),]
+
+# Split the data into training and testing
+idx <- round(0.8 * nrow(dt.Shuffled))
+wine.tra <-SF.asDecisionTable(dt.Shuffled[1:idx,],decision.attr = 14, indx.nominal = 14)
+#wine.tst <- SF.asDecisionTable(dt.Shuffled[(idx+1):nrow(dt.Shuffled), -ncol(dt.Shuffled)])
+wine.tst <- SF.asDecisionTable(dt.Shuffled[(idx+1):nrow(dt.Shuffled), ], decision.attr = 14, indx.nominal = 14)
+
+# DISCRETIZATION
+cut.values <- D.discretization.RST(wine.tra,type.method = "global.discernibility")
+d.tra <- SF.applyDecTable(wine.tra, cut.values)
+d.tst <- SF.applyDecTable(wine.tst, cut.values)
+
+# generate single superreduct
+res.1 <- FS.feature.subset.computation(wine.tra,method = "quickreduct.frst") 
+#res.2 <- FS.feature.subset.computation(wine.tst,method = "quickreduct.frst")
+
+## generate new decision table
+new.decTable_1 <- SF.applyDecTable(wine.tra, res.1)
+new.decTable_2 <- SF.applyDecTable(wine.tst, res.1)
+
+# INSTANCE SELECTION
+indx_1 <- IS.FRIS.FRST(new.decTable_1,control = list(threshold.tau = 0.2, alpha = 1))
+#indx_2 <- IS.FRIS.FRST(new.decTable_2,control = list(threshold.tau = 0.2, alpha = 1))
+
+wine.tra.is <- SF.applyDecTable(new.decTable_1, indx_1)
+wine.tst.is <- SF.applyDecTable(new.decTable_2, indx_1)
+
+
+# RULE INDUCTION (Rule-based classifiers)
+control.ri <- list(type.aggregation = c("t.tnorm", "lukasiewicz"),type.relation = c("tolerance", "eq.3"),t.implicator ="kleene_dienes")
+
+decRules.hybrid <- RI.hybridFS.FRST(wine.tra.is,control.ri)
+
+# Missing Values
+#md.pattern(wine.tst.is) 
+#wine.tst.imp <- mice(wine.tst.is, m=5, maxit = 50, method = 'pmm', seed = 5)
+wine.tst.imp <- na.omit(wine.tst.is)
+
+
+# Model
+library(class)
+y_pred = knn(train = wine.tra.is[,-1], test = wine.tst.imp[,-1], cl = wine.tra.is[, 6], k = 1)
+
+# predicting newdata
+#predValues.hybrid <- predict(decRules.hybrid,new.decTable)#
+
+#summary(decRules.hybrid)
+
+cm = table(wine.tst.imp[,6], y_pred)
+library(caret)
+confusionMatrix(wine.tst.imp[,6], y_pred)
+
+#Support Calculation Function
+
+
+support <- function(l) {
+  support_values()
+  for(i in l){
+    rule = l[i]
+    count = 0
+    for(j in nrow(wine.tra.is)){
+      c = setequal(intersect(l, wine.tra.is[j,]), l)
+      if(c == TRUE) { 
+      count = count+1
+      }
+    }
+    support_values[i] <- count/178
+    print(support_values[i])
+  }
+  return ()
+}
+
+
+
+#for(i in (0:length(decRules.hybrid["rules"]["rules"]))){
+#  supp[i] <- support(decRules.hybrid["rules"]["rules"][i])
+#}
+support(decRules.hybrid)
+print(s)
+
+ruleset = vector(length = 141)
+
+for(i in 1:141) {
+ ruleset[i] <- matrix(unlist(decRules.hybrid["rules"]["rules"]),ncol = lengths(decRules.hybrid["rules"]["rules"][i]), byrow = TRUE)
+}
+print(ruleset)
+
+
+
